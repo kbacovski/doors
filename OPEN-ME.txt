@@ -1,0 +1,15 @@
+doors for Mac — 2.6
+
+This is an unofficial, noncommercial fan game. It contains flashing red effects and jump scares. Please do not run it if you are sensitive to flashing images.
+
+To install:
+1. Open this disk image and copy doors.app to your Applications folder.
+2. Open doors.app. If macOS blocks it, review the warning and, only if you trust this game and its sender, allow it in System Settings > Privacy & Security.
+
+The game starts immediately. Find colorful game folders in the Finder window, then drag .gold or .crucifix files onto the ransom window. The first folder has one small coin. The two old file-selection buttons have been removed.
+
+The slowly fading red desktop veil and pop-ups are temporary drawings. The game does not change your real wallpaper, application icons, or app names, and it does not encrypt your files. Cmd+Q and normal macOS Force Quit remain available.
+
+This build includes Apple silicon and Intel code for macOS 13 or later. It is ad-hoc signed but not Apple-notarized, so another Mac may still require an explicit security approval.
+
+Credits and license are inside doors.app/Contents/Resources/README.md and LICENSE.md.

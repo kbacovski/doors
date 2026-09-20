@@ -38,7 +38,7 @@ private final class Game: ObservableObject {
     @Published private(set) var coins: [Coin] = []
     @Published var selectedDrawer = 0
     @Published private(set) var collected = 0
-    @Published private(set) var selectedFolderName = "Папка игры (по умолчанию)"
+    @Published private(set) var selectedFolderName = "Game folder (default)"
     @Published private(set) var coinCount = 0
     @Published private(set) var defeatSeconds = 20
 
@@ -55,6 +55,7 @@ private final class Game: ObservableObject {
     private let coinStore = CoinStore()
     private let soundtrack = Soundtrack()
     private let taunts = TauntManager()
+    private let desktopVeil = DesktopVeilManager()
     private let ransomPanel = RansomPanelManager()
     private let defeatOverlay = DefeatOverlayManager()
     private let outcomeOverlay = OutcomeOverlayManager()
@@ -103,6 +104,7 @@ private final class Game: ObservableObject {
         coinStore.cleanup()
         soundtrack.stop()
         taunts.closeAll()
+        desktopVeil.stop()
         defeatOverlay.close()
         outcomeOverlay.close()
         due = ransomAmount
@@ -151,10 +153,10 @@ private final class Game: ObservableObject {
             secondsLeft = max(0, Int(ceil(ransomDeadline.timeIntervalSince(now))))
             soundtrack.update(elapsed: duration - secondsLeft, duration: duration)
             if now >= nextTauntAt && secondsLeft > 0 {
-                taunts.spawn(count: secondsLeft <= 20 ? 2 : 1)
+                taunts.spawn(count: secondsLeft <= 20 ? 4 : (secondsLeft <= duration / 2 ? 3 : 2))
                 Sound.play("tauntSpawn")
                 nextTauntAt = now.addingTimeInterval(
-                    secondsLeft <= 20 ? Double.random(in: 1.5...3.0) : Double.random(in: 3.0...5.0)
+                    secondsLeft <= 20 ? Double.random(in: 1.0...1.8) : Double.random(in: 1.8...2.8)
                 )
             }
             if secondsLeft == 0 {
@@ -199,27 +201,11 @@ private final class Game: ObservableObject {
         pay(id)
     }
 
-    func openCoinsInFinder() { coinStore.openInFinder(all: true) }
-
-    func chooseCoinsToPay() {
-        guard phase == .ransom else { return }
-        let panel = NSOpenPanel()
-        panel.message = "Выбери файлы .gold или .crucifix, созданные этим раундом."
-        panel.prompt = "Отдать монеты"
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowsMultipleSelection = true
-        panel.directoryURL = coinStore.currentRoot
-        if panel.runModal() == .OK {
-            for url in panel.urls { payFile(at: url) }
-        }
-    }
-
     func chooseFolder() {
         guard phase == .ready || phase == .escaped || phase == .expired else { return }
         let panel = NSOpenPanel()
-        panel.message = "Выбери до восьми мест (например, Документы, Загрузки, Рабочий стол). В каждом появятся только разноцветные папки игры. Системную /Applications и виртуальные «Недавние» приложение не изменяет."
-        panel.prompt = "Выбрать папки"
+        panel.message = "Choose up to eight locations (for example, Documents, Downloads, or Desktop). Only colorful game folders will be created there. System /Applications and Finder's virtual Recents are never changed."
+        panel.prompt = "Choose folders"
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = true
@@ -227,8 +213,8 @@ private final class Game: ObservableObject {
             let allowed = Array(panel.urls.filter { CoinStore.isAllowedRoot($0) }.prefix(8))
             if allowed.isEmpty {
                 let alert = NSAlert()
-                alert.messageText = "Выбери папки внутри домашней папки Mac"
-                alert.informativeText = "Системные каталоги, включая /Applications, не используются. Папка «Программы» внутри твоей домашней папки подходит."
+                alert.messageText = "Choose folders inside your Mac home folder"
+                alert.informativeText = "System directories, including /Applications, are not used. An Applications folder inside your home folder is allowed."
                 alert.runModal()
             } else {
                 selectedFolders = allowed
@@ -239,7 +225,7 @@ private final class Game: ObservableObject {
 
     func useGameFolder() {
         selectedFolders = []
-        selectedFolderName = "Папка игры (по умолчанию)"
+        selectedFolderName = "Game folder (default)"
     }
 
     func useStandardFolders() {
@@ -248,14 +234,15 @@ private final class Game: ObservableObject {
         selectedFolders = names.map { home.appendingPathComponent($0, isDirectory: true) }
             .filter { CoinStore.isAllowedRoot($0) && FileManager.default.fileExists(atPath: $0.path) }
         selectedFolderName = selectedFolders.isEmpty
-            ? "Папка игры (по умолчанию)"
-            : "\(selectedFolders.count) мест: " + selectedFolders.map(\.lastPathComponent).joined(separator: " · ")
+            ? "Game folder (default)"
+            : "\(selectedFolders.count) locations: " + selectedFolders.map(\.lastPathComponent).joined(separator: " · ")
     }
 
     func shutdown() {
         coinStore.cleanup()
         soundtrack.stop()
         taunts.closeAll()
+        desktopVeil.stop()
         ransomPanel.close()
         defeatOverlay.close()
         outcomeOverlay.close()
@@ -302,7 +289,7 @@ private final class Game: ObservableObject {
             return
         }
         ransomDeadline = Date().addingTimeInterval(TimeInterval(duration))
-        nextTauntAt = Date().addingTimeInterval(3)
+        nextTauntAt = Date().addingTimeInterval(1.4)
         selectedDrawer = Int.random(in: 0..<6)
         soundtrack.update(elapsed: 0, duration: duration)
         mainWindow = NSApp.windows.first(where: { $0.title == "doors" })
@@ -310,8 +297,9 @@ private final class Game: ObservableObject {
         // The floating game panel stays visible, without a Dock icon to close.
         // Cmd+Q still terminates the foreground game through the event monitor.
         NSApp.setActivationPolicy(.accessory)
+        desktopVeil.start()
         ransomPanel.show(game: self)
-        taunts.spawn(count: 5)
+        taunts.spawn(count: 9)
         Sound.play("tauntSpawn")
         coinStore.openInFinder(all: false)
 #if QA
@@ -341,6 +329,7 @@ private final class Game: ObservableObject {
         coinStore.cleanup()
         soundtrack.stop()
         taunts.closeAll()
+        desktopVeil.stop()
         ransomPanel.close()
         Sound.play("attack")
         outcomeOverlay.show(.scare)
@@ -362,6 +351,7 @@ private final class Game: ObservableObject {
         coinStore.cleanup()
         soundtrack.stop()
         taunts.closeAll()
+        desktopVeil.stop()
         ransomPanel.close()
         if crucifix {
             outcomeOverlay.show(.crucifix)
@@ -473,17 +463,17 @@ private struct GameView: View {
 
     private var statusText: String {
         switch game.phase {
-        case .ready: "ОЖИДАНИЕ"
-        case .warning: "ЗАМРИ"
-        case .download: "ЗАРАЖЕНИЕ"
-        case .ransom: "АТАКА"
-        case .crucifix: "РАСПЯТИЕ"
-        case .thankYou: "СПАСЕНИЕ"
-        case .scare: "ПОРАЖЕНИЕ"
-        case .defeat: "ПОРАЖЕНИЕ"
-        case .escaped: "ВЫ СПАСЛИСЬ"
-        case .paid: "ОПЛАЧЕНО"
-        case .expired: "ВРЕМЯ ВЫШЛО"
+        case .ready: "WAITING"
+        case .warning: "FREEZE"
+        case .download: "INFECTION"
+        case .ransom: "ATTACK"
+        case .crucifix: "CRUCIFIX"
+        case .thankYou: "SAVED"
+        case .scare: "DEFEAT"
+        case .defeat: "DEFEAT"
+        case .escaped: "YOU ESCAPED"
+        case .paid: "PAID"
+        case .expired: "TIME IS UP"
         }
     }
 
@@ -495,7 +485,7 @@ private struct GameView: View {
                 RadialGradient(colors: [Palette.red.opacity(game.phase == .warning || game.phase == .download || game.phase == .ransom ? 0.29 : 0.1), .clear], center: .center, startRadius: 20, endRadius: 280)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                 VStack(spacing: 6) {
-                    Text("///  ВИЗУАЛЬНЫЙ КОНТАКТ  ///")
+                    Text("///  VISUAL CONTACT  ///")
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .tracking(2).foregroundStyle(Palette.red.opacity(0.85))
                     BundledImage(name: game.phase == .download || game.phase == .ransom || game.phase == .expired ? "ransom_attack" : "ransom_idle")
@@ -531,52 +521,52 @@ private struct GameView: View {
 
     private var portraitCaption: String {
         switch game.phase {
-        case .warning: "НЕ ДВИГАЙСЯ  ·  \(game.warningSeconds)"
-        case .download: "ЗАГРУЗКА..."
-        case .ransom: "ЦЕЛЬ ОБНАРУЖЕНА"
-        case .crucifix, .thankYou, .scare: "СИГНАЛ ПОТЕРЯН"
-        case .defeat: "СИГНАЛ ПОТЕРЯН"
-        case .paid, .escaped: "СИГНАЛ ПОТЕРЯН"
-        default: "СИГНАЛ ОЖИДАЕТСЯ"
+        case .warning: "DO NOT MOVE  ·  \(game.warningSeconds)"
+        case .download: "DOWNLOADING..."
+        case .ransom: "TARGET FOUND"
+        case .crucifix, .thankYou, .scare: "SIGNAL LOST"
+        case .defeat: "SIGNAL LOST"
+        case .paid, .escaped: "SIGNAL LOST"
+        default: "SIGNAL PENDING"
         }
     }
 
     private var headline: String {
         switch game.phase {
-        case .ready: "ОН СЛЕДИТ ЗА ТОБОЙ."
-        case .warning: "СТОЙ. НЕ ДВИГАЙСЯ."
-        case .download: "ОН НАШЁЛ ТЕБЯ."
-        case .ransom: "СОБЕРИ ЗОЛОТО."
-        case .crucifix: "ОН УХОДИТ."
-        case .thankYou: "СПАСИБО."
-        case .scare: "ПОРАЖЕНИЕ."
-        case .defeat: "ПОРАЖЕНИЕ."
-        case .escaped: "ТЕБЯ НЕ ЗАМЕТИЛИ."
-        case .paid: "ДОЛГ ПОГАШЕН."
-        case .expired: "ВРЕМЯ ВЫШЛО."
+        case .ready: "HE IS WATCHING YOU."
+        case .warning: "STOP. DO NOT MOVE."
+        case .download: "HE FOUND YOU."
+        case .ransom: "COLLECT THE GOLD."
+        case .crucifix: "HE IS LEAVING."
+        case .thankYou: "THANK YOU."
+        case .scare: "DEFEAT."
+        case .defeat: "DEFEAT."
+        case .escaped: "YOU WENT UNNOTICED."
+        case .paid: "DEBT PAID."
+        case .expired: "TIME IS UP."
         }
     }
 
     private var explanation: String {
         switch game.phase {
-        case .ready: "При запуске RANS0M появляется сам. Во время предупреждения не двигай мышью и не нажимай клавиши три секунды."
-        case .warning: "Если пошевелишь мышью или нажмёшь клавишу, RANS0M потребует выкуп. Замри, чтобы избежать атаки."
-        case .download: "Монеты появляются как файлы. Найди их в Finder и перетащи сюда, пока не закончился таймер."
-        case .ransom: "Найди файлы .gold в Finder и перетащи их в зону оплаты. .crucifix снимает весь долг."
-        case .crucifix: "Распятие остановило монстра."
-        case .thankYou: "Монеты собраны. Игра сейчас завершится."
-        case .scare: "Монстр поймал тебя."
-        case .defeat: "Чёрный экран продлится 20 секунд, затем приложение завершится."
-        case .escaped: "Ты выдержал предупреждение. Система не пострадала. Можешь сыграть ещё раз."
-        case .paid: "Монет хватило, чтобы снять выкуп."
-        case .expired: "Раунд окончен. Созданные игрой монеты убраны; твои файлы остались нетронутыми."
+        case .ready: "RANS0M appears when the game opens. During the warning, do not move the mouse or press a key for three seconds."
+        case .warning: "Moving the mouse or pressing a key triggers the ransom. Stay still to avoid the attack."
+        case .download: "Coins appear as files. Find them in Finder and drag them here before time runs out."
+        case .ransom: "Find .gold files in Finder and drag them into the payment area. A .crucifix clears the whole debt."
+        case .crucifix: "The crucifix stopped the monster."
+        case .thankYou: "All coins collected. The game will close now."
+        case .scare: "The monster caught you."
+        case .defeat: "The black screen lasts 20 seconds, then the app closes."
+        case .escaped: "You survived the warning. Nothing on your Mac was harmed."
+        case .paid: "You found enough coins to pay the debt."
+        case .expired: "The round is over. Game-created coins were removed; your files were not changed."
         }
     }
 
     private var progressPanel: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline) {
-                Text("ОСТАЛОСЬ").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Palette.muted)
+                Text("REMAINING").font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Palette.muted)
                 Spacer()
                 Text("\(game.due) G").font(.system(size: 23, weight: .heavy, design: .monospaced)).foregroundStyle(Palette.gold)
             }
@@ -589,7 +579,7 @@ private struct GameView: View {
             }
             .frame(height: 6)
             HStack {
-                Text("СОБРАНО  \(game.collected) G")
+                Text("COLLECTED  \(game.collected) G")
                 Spacer()
                 Text(String(format: "%02d:%02d", game.secondsLeft / 60, game.secondsLeft % 60))
                     .foregroundStyle(game.secondsLeft <= 15 ? Palette.red : Palette.white)
@@ -605,12 +595,12 @@ private struct GameView: View {
         HStack(spacing: 10) {
             if game.phase == .ready || game.phase == .escaped || game.phase == .paid || game.phase == .expired {
                 Button(action: game.start) {
-                    Label(game.phase == .ready ? "НАЧАТЬ ИГРУ" : "ЕЩЁ РАУНД", systemImage: "play.fill")
+                    Label(game.phase == .ready ? "START GAME" : "ANOTHER ROUND", systemImage: "play.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(PrimaryButtonStyle())
             } else {
-                Text("РАУНД ИДЁТ · ИЩИ МОНЕТЫ В FINDER")
+                Text("ROUND ACTIVE · FIND COINS IN FINDER")
                     .font(.system(size: 11, weight: .heavy, design: .monospaced))
                     .foregroundStyle(Palette.gold)
             }
@@ -621,9 +611,9 @@ private struct GameView: View {
         VStack(alignment: .leading, spacing: 17) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(game.phase == .ransom ? "ПОИСК ЗОЛОТА" : "ПАРАМЕТРЫ ИГРЫ")
+                    Text(game.phase == .ransom ? "GOLD HUNT" : "GAME SETTINGS")
                         .font(.system(size: 17, weight: .heavy, design: .monospaced)).tracking(1)
-                    Text(game.phase == .ransom ? "Открывай ящики · ищи монеты" : "Настрой следующий раунд")
+                    Text(game.phase == .ransom ? "Open drawers · find coins" : "Set up the next round")
                         .font(.system(size: 11)).foregroundStyle(Palette.muted)
                 }
                 Spacer()
@@ -638,7 +628,7 @@ private struct GameView: View {
                 ScrollView { settings }
                     .frame(maxHeight: .infinity)
             }
-            Text("ТОЛЬКО СВОИ МОНЕТЫ  ·  БЕЗ ВЫКЛЮЧЕНИЯ MAC")
+            Text("GAME-OWNED COINS ONLY  ·  NO MAC SHUTDOWN")
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .tracking(0.6).foregroundStyle(Palette.muted)
         }
@@ -651,43 +641,43 @@ private struct GameView: View {
 
     private var settings: some View {
         VStack(alignment: .leading, spacing: 23) {
-            settingRow(title: "РАЗМЕР ВЫКУПА", value: "\(game.ransomAmount) G", minus: {
+            settingRow(title: "RANSOM AMOUNT", value: "\(game.ransomAmount) G", minus: {
                 game.ransomAmount = max(100, game.ransomAmount - 100)
             }, plus: {
                 game.ransomAmount = min(2000, game.ransomAmount + 100)
             })
-            settingRow(title: "ВРЕМЯ НА СБОР", value: "\(game.duration) СЕК", minus: {
+            settingRow(title: "COLLECTION TIME", value: "\(game.duration) SEC", minus: {
                 game.duration = max(30, game.duration - 15)
             }, plus: {
                 game.duration = min(180, game.duration + 15)
             })
             VStack(alignment: .leading, spacing: 8) {
-                Text("КУДА ПОМЕЩАТЬ МОНЕТЫ")
+                Text("WHERE TO PLACE COINS")
                     .font(.system(size: 10, weight: .bold, design: .monospaced)).foregroundStyle(Palette.muted)
                 Text(game.selectedFolderName)
                     .font(.system(size: 12, weight: .semibold)).lineLimit(1)
                 HStack(spacing: 8) {
-                    Button("ВЫБРАТЬ МЕСТА", action: game.chooseFolder)
+                    Button("CHOOSE LOCATIONS", action: game.chooseFolder)
                         .buttonStyle(SecondaryButtonStyle())
-                    Button("СБРОС", action: game.useGameFolder)
+                    Button("RESET", action: game.useGameFolder)
                         .buttonStyle(SecondaryButtonStyle())
                 }
-                Button("СТАНДАРТНЫЕ ПАПКИ MAC", action: game.useStandardFolders)
+                Button("STANDARD MAC FOLDERS", action: game.useStandardFolders)
                     .buttonStyle(SecondaryButtonStyle())
-                Text("В каждом месте появятся разноцветные папки игры, часть из них — пустышки. «Недавние» — виртуальный список Finder, а системная /Applications не меняется.")
+                Text("Each location gets colorful game folders, including empty decoys. Recents is a virtual Finder list, and system /Applications is not changed.")
                     .font(.system(size: 10)).foregroundStyle(Palette.muted)
             }
             VStack(alignment: .leading, spacing: 10) {
-                Text("КАК ЭТО РАБОТАЕТ")
+                Text("HOW IT WORKS")
                     .font(.system(size: 10, weight: .heavy, design: .monospaced)).foregroundStyle(Palette.gold)
-                instruction("01", "RANS0M появляется при запуске.")
-                instruction("02", "Замри на 3 секунды, чтобы спастись.")
-                instruction("03", "Иначе ищи монеты в Finder.")
+                instruction("01", "RANS0M appears when the game starts.")
+                instruction("02", "Stay still for three seconds to escape.")
+                instruction("03", "Otherwise, find the coins in Finder.")
             }
             .padding(17)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Palette.panelRaised, in: RoundedRectangle(cornerRadius: 12))
-            Text("Адаптация для macOS. Исходный проект: Ixar. Doors и RANSOM/A-90: LSPLASH. Неофициальный некоммерческий фан-проект.")
+            Text("macOS adaptation. Original project: Ixar. Doors and RANSOM/A-90: LSPLASH. Unofficial, noncommercial fan project.")
                 .font(.system(size: 10)).foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -718,7 +708,7 @@ private struct GameView: View {
             HStack(spacing: 12) {
                 Image(systemName: "folder.fill").font(.system(size: 26)).foregroundStyle(Palette.gold)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("\(game.coinCount) ФАЙЛОВ-МОНЕТ")
+                    Text("\(game.coinCount) COIN FILES")
                         .font(.system(size: 13, weight: .heavy, design: .monospaced))
                     Text(".gold1–.gold6  /  .crucifix")
                         .font(.system(size: 10, design: .monospaced)).foregroundStyle(Palette.muted)
@@ -726,14 +716,7 @@ private struct GameView: View {
             }
             .padding(15).frame(maxWidth: .infinity, alignment: .leading)
             .background(Palette.panelRaised, in: RoundedRectangle(cornerRadius: 11))
-            Button {
-                game.openCoinsInFinder()
-            } label: {
-                Label("ОТКРЫТЬ ПАПКУ В FINDER", systemImage: "folder.badge.plus")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(PrimaryButtonStyle())
-            Text("В самой первой папке лежит одна монета на 10 G. Другие разноцветные папки могут быть пустыми. Перетаскивай найденное сюда.")
+            Text("The first folder contains one 10 G coin. Other colorful folders may be empty. Drag anything you find here.")
                 .font(.system(size: 12)).foregroundStyle(Palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -744,7 +727,7 @@ private struct GameView: View {
                     .strokeBorder(isDropTarget ? Palette.gold : Palette.border, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
                 VStack(spacing: 5) {
                     Image(systemName: "arrow.down.to.line.compact").font(.system(size: 19)).foregroundStyle(Palette.gold)
-                    Text("ПЕРЕТАЩИ ФАЙЛ-МОНЕТУ СЮДА")
+                    Text("DROP A COIN FILE HERE")
                         .font(.system(size: 10, weight: .heavy, design: .monospaced)).tracking(0.5)
                 }
             }
@@ -762,8 +745,6 @@ private struct GameView: View {
                 }
                 return true
             }
-            Button("ВЫБРАТЬ ФАЙЛ-МОНЕТУ…") { game.chooseCoinsToPay() }
-                .buttonStyle(SecondaryButtonStyle())
         }
     }
 
@@ -774,7 +755,7 @@ private struct GameView: View {
                 .ignoresSafeArea()
             VStack(spacing: 16) {
                 HStack {
-                    Text("RANS0M  //  \(game.phase == .warning ? "СТОЙ" : "ОБНАРУЖЕН")")
+                    Text("RANS0M  //  \(game.phase == .warning ? "STOP" : "FOUND")")
                     Spacer()
                 }
                 .font(.system(size: 12, weight: .heavy, design: .monospaced))
@@ -789,7 +770,7 @@ private struct GameView: View {
                                height: game.warningProgress > 0.18 ? 300 : 220)
                         .offset(x: game.warningProgress > 0.18 ? 0 : 165,
                                 y: game.warningProgress > 0.18 ? 0 : -75)
-                    Text("НЕ ДВИГАЙСЯ").font(.system(size: 42, weight: .black, design: .monospaced)).tracking(5)
+                    Text("DO NOT MOVE").font(.system(size: 42, weight: .black, design: .monospaced)).tracking(5)
                     Text("\(game.warningSeconds)").font(.system(size: 27, weight: .bold, design: .monospaced))
                 } else {
                     BundledImage(name: "ransom_attack")
@@ -800,7 +781,7 @@ private struct GameView: View {
                         .tint(Palette.red).frame(width: 440)
                 }
                 Spacer()
-                Text("ИГРОВАЯ ИМИТАЦИЯ · CMD+Q ДЛЯ ВЫХОДА")
+                Text("GAME SIMULATION · CMD+Q TO QUIT")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(Palette.white.opacity(0.6)).padding(.bottom, 22)
             }
@@ -809,9 +790,9 @@ private struct GameView: View {
 
     private var footer: some View {
         HStack {
-            Text("RANS0M  /  ИГРОВАЯ ИМИТАЦИЯ")
+            Text("RANS0M  /  GAME SIMULATION")
             Spacer()
-            Text("CMD+Q — ВЫХОД ИЗ ПРИЛОЖЕНИЯ")
+            Text("CMD+Q — QUIT THE APP")
         }
         .font(.system(size: 9, weight: .bold, design: .monospaced))
         .tracking(1).foregroundStyle(Palette.muted)
@@ -834,7 +815,7 @@ private final class RansomPanelManager {
         let y = CGFloat.random(in: visible.minY...maxY)
         let window = NSPanel(contentRect: NSRect(x: x, y: y, width: width, height: height),
                              styleMask: [.titled], backing: .buffered, defer: false)
-        window.title = "doors — выкуп"
+        window.title = "doors — ransom"
         window.isReleasedWhenClosed = false
         window.level = .floating
         window.hidesOnDeactivate = false
@@ -977,7 +958,7 @@ private struct RansomPanelView: View {
                         Text("YOUR FILES HAVE\nBEEN ENCRYPTED")
                             .font(.system(size: 28, weight: .black, design: .monospaced))
                             .tracking(-1).lineLimit(2).minimumScaleFactor(0.8)
-                        Text("ИГРОВАЯ ИМИТАЦИЯ · ФАЙЛЫ НЕ ШИФРУЮТСЯ")
+                        Text("GAME SIMULATION · FILES ARE NOT ENCRYPTED")
                             .font(.system(size: 8, weight: .bold, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.75))
                     }
@@ -985,7 +966,7 @@ private struct RansomPanelView: View {
                 }
                 .frame(height: 130)
 
-                Text("НАЙДИ МОНЕТЫ В FINDER И ОТДАЙ ВЫКУП ДО КОНЦА ТАЙМЕРА")
+                Text("FIND COINS IN FINDER AND PAY BEFORE TIME RUNS OUT")
                     .font(.system(size: 12, weight: .heavy, design: .monospaced))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity).padding(.vertical, 11)
@@ -993,7 +974,7 @@ private struct RansomPanelView: View {
 
                 HStack(spacing: 11) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("ОСТАЛОСЬ ЗОЛОТА").font(.system(size: 9, weight: .bold, design: .monospaced))
+                        Text("GOLD REMAINING").font(.system(size: 9, weight: .bold, design: .monospaced))
                         Text("\(game.due) G").font(.system(size: 30, weight: .black, design: .monospaced))
                     }
                     .foregroundStyle(Palette.gold)
@@ -1011,10 +992,10 @@ private struct RansomPanelView: View {
                         .fill(isDropTarget ? Palette.gold.opacity(0.25) : .black.opacity(0.75))
                     RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(isDropTarget ? Palette.gold : .white.opacity(0.65), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
-                    Text("ПЕРЕТАЩИ СЮДА .gold ИЛИ .crucifix")
+                    Text("DROP .gold OR .crucifix HERE")
                         .font(.system(size: 12, weight: .black, design: .monospaced))
                 }
-                .frame(height: 70)
+                .frame(height: 96)
                 .onDrop(of: [.fileURL], isTargeted: $isDropTarget) { providers in
                     for provider in providers {
                         provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
@@ -1029,12 +1010,6 @@ private struct RansomPanelView: View {
                     return true
                 }
 
-                HStack(spacing: 10) {
-                    Button("ОТКРЫТЬ МОНЕТЫ В FINDER") { game.openCoinsInFinder() }
-                        .buttonStyle(PrimaryButtonStyle())
-                    Button("ВЫБРАТЬ ФАЙЛ…") { game.chooseCoinsToPay() }
-                        .buttonStyle(SecondaryButtonStyle())
-                }
             }
             .padding(20)
         }

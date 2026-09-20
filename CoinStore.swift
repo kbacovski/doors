@@ -77,7 +77,7 @@ final class CoinStore {
                 // Finder opens the game-owned folder, showing Drawer 01 first.
                 currentRoots.append(gameFolder)
                 for number in 1...6 {
-                    let drawer = gameFolder.appendingPathComponent(String(format: "Монеты %02d", number), isDirectory: true)
+                    let drawer = gameFolder.appendingPathComponent(String(format: "Coins %02d", number), isDirectory: true)
                     if createOwnedFolder(drawer, colorIndex: destinations.count) {
                         destinations.append(drawer)
                         if number == 1 { entryDrawers.append(drawer) }

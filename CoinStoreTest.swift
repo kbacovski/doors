@@ -38,7 +38,7 @@ struct CoinStoreTest {
         }
         precondition(drawers.count == 12, "Each selected location needs six colorful drawers")
         let first = subfolders.first { $0.deletingLastPathComponent() == documents }!
-            .appendingPathComponent("Монеты 01", isDirectory: true)
+            .appendingPathComponent("Coins 01", isDirectory: true)
         let tutorialMarkers = try FileManager.default.contentsOfDirectory(at: first, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension.hasPrefix("gold") || $0.pathExtension == "crucifix" }
         precondition(tutorialMarkers.count == 1 && tutorialMarkers[0].pathExtension == "gold1",
